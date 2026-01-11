@@ -78,4 +78,5 @@ void printThisMonthBs()
 }
 
 int main() { 
+    printThisMonthBs();
 }
