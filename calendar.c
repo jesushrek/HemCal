@@ -1,5 +1,3 @@
-#include <stdio.h>
-#include <string.h>
 #include <stdlib.h>
 #include <time.h>
 #include "constants.h"
@@ -14,6 +12,9 @@ Date returnTodayDate()
         .year = tm.tm_year + 1900,
         .month = tm.tm_mon,
         .day = tm.tm_mday,
+        .hour = tm.tm_hour,
+        .minute = tm.tm_min,
+        .second = tm.tm_sec,
     };
 
     return today;
@@ -54,7 +55,7 @@ void printBsMonth(Date bsDate)
         .month = bsDate.month,
         .day = 1,
     };
-    printf("%s", prepareCalendar(daysInMonth, daysOfWeekBs(firstDayOfMonth)));
+    printf("%s\n\n", prepareCalendar(daysInMonth, daysOfWeekBs(firstDayOfMonth)));
 }
 
 void printBsYear(Date bsDate)
@@ -67,7 +68,6 @@ void printBsYear(Date bsDate)
             .day = 1,
         };
         printBsMonth(currentMonth);
-        printf("\n");
     }
 }
 
@@ -77,6 +77,12 @@ void printThisMonthBs()
     printBsMonth(bsCurr);
 }
 
+void printCurrentYear() 
+{ 
+    Date bsCurr = adToBs(returnTodayDate());
+    printBsYear(bsCurr);
+}
+
 int main() { 
-    printThisMonthBs();
+    printCurrentYear();
 }
