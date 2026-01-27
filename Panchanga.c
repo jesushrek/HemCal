@@ -1,54 +1,63 @@
 #include "swephexp.h"
 #include "constants.h"
+#include "convertor.c"
 
-//27.7103° N, 85.3222° E
 double geoPos[] = { 
-    [Longitude] = 85.3222, 
-    [Latitude] = 27.7103, 
-    [Altitude] = 1324.0 
+    [Longitude] = 85.3222,
+    [Latitude] = 27.7103,
+    [Altitude] = 1324.0
 };
+
+typedef enum 
+{
+    CALC_TITHI,
+    CALC_NAKSHATRA,
+    CALC_KARANA,
+    CALC_YOGA,
+
+} CalcType;
 
 typedef struct 
 { 
     int tithi;
-    double tithiStart;
-    double tithiEnd;
-    EnumPaksha paksha;
+    double start;
+    double end;
 
 } Tithi;
 
 typedef struct 
 { 
+    int yoga;
+    double start;
+    double end;
+
+} Yoga;
+
+typedef struct
+{ 
+    int muhurata;
+    double start;
+    double end;
+
+} Muhuratas;
+
+typedef struct 
+{ 
+    int karana;
+    double start;
+    double end;
+
+} Karana;
+
+typedef struct 
+{ 
     int nakshatra;
-    double nakshatraStart;
-    double nakshatraEnd;
+    double start;
+    double end;
 
 } Nakshatra;
 
 typedef struct 
-{ 
-    int yoga;
-    double yogaStart;
-    double yogaEnd;
-
-} Yoga;
-
-typedef struct 
-{ 
-    int muhurata;
-    double muhurataStart;
-    double muhurataEnd;
-
-} Muhuratas;
-
-typedef struct
-{ 
-    int karana;
-    double karanaStart;
-    double karanaEnd;
-} Karana;
-
-typedef struct
 { 
     double sunrise;
     double sunset;
@@ -56,63 +65,96 @@ typedef struct
 
     Date adDate;
     Date bsDate;
-    double julianDate;
 
     Tithi tithi[2];
-    Nakshatra nakshatras[2];
-    Yoga yogas[2];
+    Nakshatra nakshatra[2];
+    Yoga yoga[2];
+
     int vara;
-    Muhuratas muhuratas[30];
+    Muhuratas muhurata[30];
     Karana karana[4];
 
-} PanchangaDay;
+} Panchanga;
 
-double getTithi(double jd)
-{ 
+double getArc(double jd, CalcType type) { 
     char serr[AS_MAXCH];
     int iflag = SEFLG_SWIEPH | SEFLG_SIDEREAL;
 
     double x2[6];
+    swe_calc_ut(jd, SE_SUN, iflag, x2, serr);
 
-    int iflgret = swe_calc_ut(jd, SE_SUN, iflag, x2, serr);
+    double lonSun = x2[0];
 
-    if(iflgret < 0)
-        printf("Error: %s \n", serr);
+    swe_calc_ut(jd, SE_MOON, iflag, x2, serr);
+    double lonMoon = x2[0];
 
-    double sunLongitude = x2[0];
+    double result;
+    switch(type)
+    { 
+        case CALC_TITHI:
+            result = lonMoon - lonSun;
+            break;
+        case CALC_NAKSHATRA:
+            result = lonMoon;
+            break;
+        case CALC_YOGA:
+            result = lonMoon + lonSun;
+            break;
+        case CALC_KARANA:
+            result = lonMoon - lonSun;
+            break;
+        default:
+            return -535.0;
+    };
 
-    iflgret = swe_calc_ut(jd, SE_MOON, iflag, x2, serr);
+    while(result < 0) result += 360;
+    while(result >= 360) result -= 360;
 
-    if(iflgret < 0)
-        printf("Error: %s \n", serr);
+    if(type == CALC_TITHI)
+        return result / 12.0;
+    if(type == CALC_KARANA)
+        return result / 6.0;
 
-    double moonLongitude = x2[0];
-
-    double diff = moonLongitude - sunLongitude;
-
-    if(diff < 0)
-        diff += 360;
-
-    return (diff / 12) + 1; // tithi
+    return (result / (360.0 / 27.0));
 }
 
-double tithiBoundry(double jd, int tithiIndex)
+double getBoundry(double jd, CalcType type, double index)
 { 
-    double precision = 0.5 / 1440.0;
     double low = jd - 1;
     double high = jd + 1;
     double mid;
 
+    double boundUpper = 0.0;
+
+    switch(type)
+    { 
+        case CALC_KARANA:
+            boundUpper = 60;
+            break;
+
+        case CALC_YOGA:
+        case CALC_NAKSHATRA:
+            boundUpper = 27.0;
+            break;
+
+        case CALC_TITHI:
+            boundUpper = 30.0;
+            break;
+
+        default:
+            return -500.0;
+    };
+
+    double result = getArc(jd, type);
     for(int i = 0; i < 20; ++i)
-    {
+    { 
         mid = (low + high) / 2.0;
+        double current = getArc(mid, type);
 
-        double currentTithi = getTithi(mid);
+        if(index > (boundUpper / 2) && current <= (boundUpper / 2))
+            current += boundUpper;
 
-        if( tithiIndex >= 30.0 && currentTithi <= 15.0)
-            currentTithi += 30.0;
-
-        if( currentTithi < tithiIndex)
+        if(current < index)
             low = mid;
         else 
             high = mid;
@@ -121,188 +163,129 @@ double tithiBoundry(double jd, int tithiIndex)
     return mid;
 }
 
-double getNakshatra(double jd)
-{ 
-    char serr[AS_MAXCH];
-    int iflag = SEFLG_SWIEPH | SEFLG_SIDEREAL;
-
-    double x2[6];
-
-    int iflgret = swe_calc_ut(jd, SE_MOON, iflag, x2, serr);
-
-    if(iflgret < 0)
-        printf("Error: %s \n", serr);
-
-    return (x2[0] / (360.0 / 27.0)) + 1.0;
-}
-
-double nakshatraBoundry(double jd, int nakshatraIndex)
-{ 
-    double precision = 0.5 / 1440.0;
-    double low = jd - 1;
-    double high = jd + 1;
-    double mid;
-
-    for(int i = 0; i < 20; ++i)
-    {
-        mid = (low + high) / 2.0;
-
-        double currentnakshatra = getNakshatra(mid);
-
-        if( nakshatraIndex >= 27.0 && currentnakshatra <= 13.5)
-            currentnakshatra += 27.0;
-
-        if( currentnakshatra < nakshatraIndex)
-            low = mid;
-        else 
-            high = mid;
-    }
-
-    return mid;
-}
-
-double getYoga(double jd)
-{ 
-    char serr[AS_MAXCH];
-    int iflag = SEFLG_SWIEPH | SEFLG_SIDEREAL;
-
-    double x2[6];
-
-    int iflgret = swe_calc_ut(jd, SE_SUN, iflag, x2, serr);
-
-    if(iflgret < 0)
-        printf("Error: %s \n", serr);
-
-    double sunLongitude = x2[0];
-
-    iflgret = swe_calc_ut(jd, SE_MOON, iflag, x2, serr);
-
-    if(iflgret < 0)
-        printf("Error: %s \n", serr);
-
-    double moonLongitude = x2[0];
-
-    double diff = moonLongitude + sunLongitude;
-    if(diff >= 360) diff -= 360;
-    if(diff < 0) diff += 360;
-
-    return (diff / (360.0 / 27.0)) + 1.0;
-}
-
-double yogaBoundry(double jd, int yogaIndex)
-{ 
-    double precision = 0.5 / 1440.0;
-    double low = jd - 1;
-    double high = jd + 1;
-    double mid;
-
-    for(int i = 0; i < 20; ++i)
-    {
-        mid = (low + high) / 2.0;
-
-        double currentyoga = getYoga(mid);
-
-        if( yogaIndex >= 27.0 && currentyoga <= 13.5)
-            currentyoga += 27.0;
-
-        if( currentyoga < yogaIndex)
-            low = mid;
-        else 
-            high = mid;
-    }
-
-    return mid;
-}
-
-PanchangaDay returnPanchanga(Date date)
+Panchanga returnPanchanga(Date date)
 { 
     swe_set_sid_mode(SE_SIDM_LAHIRI, 0, 0);
+    Panchanga current = {};
+
+    current.adDate = date; 
+    current.bsDate = adToBs(date); 
+
     char serr[AS_MAXCH];
-    PanchangaDay pday = {};
+
     double totalJulianDay = swe_julday(date.year, date.month, date.day, 0, SE_GREG_CAL);
 
     int rsmi = SE_CALC_RISE | SE_BIT_HINDU_RISING;
 
-    // this is sun rise
-    int  returnCode = swe_rise_trans(totalJulianDay, SE_SUN, NULL, SEFLG_SWIEPH, rsmi, geoPos, 0, 0, &pday.sunrise, serr); 
+    // get sunrise
+    int returnCode = swe_rise_trans(totalJulianDay, SE_SUN, NULL, SEFLG_SWIEPH, rsmi, geoPos, 0, 0, &current.sunrise, serr);
 
-    if(returnCode == ERR)
-    { 
-        //handle it 
-        printf("%s\n", serr);
-    }
+    double nextSunrise = 0;
+    swe_rise_trans(current.sunrise + 0.5, SE_SUN, NULL, SEFLG_SWIEPH, rsmi, geoPos, 0, 0, &nextSunrise, serr);
 
-    // this is sun set
     rsmi = SE_CALC_SET | SE_BIT_HINDU_RISING;
-    returnCode = swe_rise_trans(pday.sunrise, SE_SUN, NULL, SEFLG_SWIEPH, rsmi, geoPos, 0, 0, &pday.sunset, serr);
+    returnCode = swe_rise_trans(totalJulianDay, SE_SUN, NULL, SEFLG_SWIEPH, rsmi, geoPos, 0, 0, &current.sunset, serr); 
 
     if(returnCode == ERR)
     { 
-        //handle it
         printf("%s\n", serr);
     }
 
+    current.vara = (int)(current.sunrise + 1.5) % 7;
+    current.ayanamsa = swe_get_ayanamsa_ut(current.sunrise);
 
-    pday.tithi[0].tithi = getTithi(pday.sunrise);
-    int previousTithi  = pday.tithi[0].tithi - 1;
+    CalcType types[] = { CALC_TITHI, CALC_NAKSHATRA, CALC_YOGA, };
+    int maxIndices[] = { 30, 27, 27 };
 
-    if(previousTithi == 0)
-        previousTithi = 30;
+    for(int i = 0; i < 3; ++i)
+    { 
+        double valueAtSunrise = getArc(current.sunrise, types[i]);
 
-    pday.tithi[0].tithiStart = tithiBoundry(pday.sunrise, previousTithi);
-    pday.tithi[0].tithiEnd = tithiBoundry(pday.sunrise, pday.tithi[0].tithi);
+        double start = getBoundry(current.sunrise, types[i], valueAtSunrise);
+        double end = getBoundry(current.sunrise, types[i], valueAtSunrise + 1.0);
 
-    int futureTithi = pday.tithi[0].tithi + 1;
+        if(types[i] == CALC_TITHI)
+        { 
+            current.tithi[0].tithi = (int)valueAtSunrise;
+            current.tithi[0].start = start;
+            current.tithi[0].end = end;
+        }
+        else if(types[i] == CALC_NAKSHATRA)
+        { 
+            current.nakshatra[0].nakshatra = (int)valueAtSunrise;
+            current.nakshatra[0].start = start;
+            current.nakshatra[0].end = end;
+        }
+        else 
+        { 
+            current.yoga[0].yoga = (int)valueAtSunrise; 
+            current.yoga[0].start = start;
+            current.yoga[0].end = end;
+        }
 
-    if(futureTithi > 30)
-        pday.tithi[1].tithi = 1;
-    else
-        pday.tithi[1].tithi = futureTithi;
+        if(end < nextSunrise)
+        { 
+            int newIndex = ((int)valueAtSunrise + 1) % maxIndices[i];
+            double end2 = getBoundry(end + 0.05, types[i], (double)newIndex + 1.1);
+            if(types[i] == CALC_TITHI)
+            { 
+                current.tithi[1].tithi = (int)newIndex;
+                current.tithi[1].start = end;
+                current.tithi[1].end = end2;
+            }
+            else if(types[i] == CALC_NAKSHATRA)
+            { 
+                current.nakshatra[1].nakshatra = (int)newIndex;
+                current.nakshatra[1].start = end;
+                current.nakshatra[1].end = end2;
+            }
+            else 
+            { 
+                current.yoga[1].yoga = (int)newIndex; 
+                current.yoga[1].start = end;
+                current.yoga[1].end = end2;
+            }
+        }
+        else
+        { 
+            if(types[i] == CALC_TITHI)
+                current.tithi[1].tithi = -1;
+            if(types[i] == CALC_NAKSHATRA)
+                current.nakshatra[1].nakshatra = -1;
+            if(types[i] == CALC_YOGA)
+                current.yoga[1].yoga = -1;
+        }
+    }
 
-    pday.tithi[1].tithiStart = pday.tithi[0].tithiEnd;
-    pday.tithi[1].tithiEnd  = tithiBoundry(pday.tithi[0].tithiEnd + 0.1, pday.tithi[1].tithi);
+    double kAtRise = getArc(current.sunrise, CALC_KARANA);
+    current.karana[0].karana = (int)kAtRise;
+    current.karana[0].start = getBoundry(current.sunrise, CALC_KARANA, kAtRise);
+    current.karana[0].end = getBoundry(current.sunrise, CALC_KARANA, kAtRise + 1.0);
 
-    pday.tithi[0].paksha = (pday.tithi[0].tithi <= 15)? ShuklaPaksha : KrishnaPaksha;
-    pday.tithi[1].paksha = (pday.tithi[1].tithi <= 15)? ShuklaPaksha : KrishnaPaksha;
+    for(int j = 1; j < 4; ++j)
+    { 
+        if(current.karana[j - 1].end < nextSunrise)
+        { 
+            int nextK = (int)(current.karana[j-1].karana + 1) % 60;
+            current.karana[j].karana = nextK;
+            current.karana[j].start = current.karana[j-1].end;
+            current.karana[j].end = getBoundry(current.karana[j].start + 0.02, CALC_KARANA, (double)nextK + 1);
+        }
+        else 
+        { 
+            current.karana[j].karana = -1;
+        }
+    }
 
-    pday.nakshatras[0].nakshatra = getNakshatra(pday.sunrise);
-    int previousNakshatra = (pday.nakshatras[0].nakshatra - 1);
+    double totalSolarDay = nextSunrise - current.sunrise;
+    double muhurataLength = totalSolarDay / 30.0;
 
-    if(previousNakshatra == 0) 
-        previousNakshatra = 27;
+    for(int i = 0; i < 30; i++)
+    { 
+        current.muhurata[i].muhurata = i;
+        current.muhurata[i].start = current.sunrise + (i * muhurataLength);
+        current.muhurata[i].end = current.sunrise + ((i + 1) * muhurataLength);
+    }
 
-    pday.nakshatras[0].nakshatraStart = nakshatraBoundry(pday.sunrise, previousNakshatra);
-    pday.nakshatras[0].nakshatraEnd = nakshatraBoundry(pday.sunrise, pday.nakshatras[0].nakshatra);
-
-    int futureNakshatra = (pday.nakshatras[0].nakshatra + 1);
-    if(futureNakshatra > 27)
-        pday.nakshatras[1].nakshatra = 1;
-    else
-        pday.nakshatras[1].nakshatra = futureNakshatra;
-
-    pday.nakshatras[1].nakshatraStart = pday.nakshatras[0].nakshatraEnd;
-    pday.nakshatras[1].nakshatraEnd = nakshatraBoundry(pday.nakshatras[0].nakshatraEnd + 0.1, pday.nakshatras[1].nakshatra);
-
-    pday.yogas[0].yoga = getYoga(pday.sunrise);
-
-    int previousYoga = (pday.yogas[0].yoga - 1);
-    if(previousYoga == 0)
-        previousYoga = 27;
-
-    pday.yogas[0].yogaStart = yogaBoundry(pday.sunrise, previousYoga);
-    pday.yogas[0].yogaEnd = yogaBoundry(pday.sunrise, pday.yogas[0].yoga);
-
-    int futureYoga = (pday.yogas[0].yoga + 1);
-    if(futureYoga > 27)
-        pday.yogas[1].yoga = 1;
-    else
-        pday.yogas[1].yoga = futureYoga;
-
-    pday.yogas[1].yogaStart = pday.yogas[0].yogaEnd;
-    pday.yogas[1].yogaEnd = yogaBoundry(pday.yogas[0].yogaEnd + 0.1, pday.yogas[1].yoga);
-
-    int alignment = 1.5;
-    pday.vara = (int)(pday.sunrise + alignment) % 7;
-
-    return pday;
+    return current;
 }
