@@ -1,1 +1,1 @@
-gcc festival_calculator.c -o  nonbinary -lswe -lm
+gcc getPanchanga.c -o  nonbinary -lswe -lm

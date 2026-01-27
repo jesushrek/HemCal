@@ -1,10 +1,9 @@
+#ifndef CONVERTOR_H
+#define CONVERTOR_H
+
 #include "constants.h"
-#include <stdio.h>
-#include <stdbool.h>
-#include <stdio.h>
 #include <stdbool.h>
 #include <stdlib.h>
-#include <string.h>
 
 
 const bool isLeapAd(int year)
@@ -255,3 +254,4 @@ int daysOfWeekBs(Date bsDate)
 
     return (anchorDay + total) % 7;
 }
+#endif

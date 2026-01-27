@@ -1,6 +1,10 @@
+#ifndef PANCHANGA_H
+#define PANCHANGA_H
+
 #include "swephexp.h"
 #include "constants.h"
-#include "convertor.c"
+#include "convertor.h"
+#include "calendar.h"
 
 double geoPos[] = { 
     [Longitude] = 85.3222,
@@ -331,3 +335,4 @@ Panchanga returnPanchanga(Date date)
 
     return current;
 }
+#endif

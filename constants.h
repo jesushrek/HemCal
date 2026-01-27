@@ -6,9 +6,9 @@ typedef struct
     int year;
     int month;
     int day;
-    int hour;
+   /* int hour;
     int minute;
-    int second;
+    int second; */
 } Date;
 
 typedef enum { 

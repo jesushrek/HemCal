@@ -1,7 +1,10 @@
+#ifndef CALENDAR_H
+#define CALENDAR_H
+
 #include <stdlib.h>
 #include <time.h>
 #include "constants.h"
-#include "convertor.c"
+#include "convertor.h"
 
 Date returnTodayDate()
 { 
@@ -12,10 +15,7 @@ Date returnTodayDate()
         .year = tm.tm_year + 1900,
         .month = tm.tm_mon,
         .day = tm.tm_mday,
-        .hour = tm.tm_hour,
-        .minute = tm.tm_min,
-        .second = tm.tm_sec,
-    };
+            };
 
     return today;
 }
@@ -83,6 +83,4 @@ void printCurrentYear()
     printBsYear(bsCurr);
 }
 
-int main() { 
-    printCurrentYear();
-}
+#endif
