@@ -14,7 +14,6 @@ typedef enum
     CALC_NAKSHATRA,
     CALC_KARANA,
     CALC_YOGA,
-
 } CalcType;
 
 typedef struct 
@@ -22,7 +21,6 @@ typedef struct
     int tithi;
     double start;
     double end;
-
 } Tithi;
 
 typedef struct 
@@ -30,7 +28,6 @@ typedef struct
     int yoga;
     double start;
     double end;
-
 } Yoga;
 
 typedef struct
@@ -38,7 +35,6 @@ typedef struct
     int muhurata;
     double start;
     double end;
-
 } Muhuratas;
 
 typedef struct 
@@ -46,7 +42,6 @@ typedef struct
     int karana;
     double start;
     double end;
-
 } Karana;
 
 typedef struct 
@@ -54,7 +49,6 @@ typedef struct
     int nakshatra;
     double start;
     double end;
-
 } Nakshatra;
 
 typedef struct 
@@ -76,16 +70,15 @@ typedef struct
 
     int sunRashi;
     int lunarMonth;
-
 } Panchanga;
 
-double getArc(double jd, CalcType type) { 
+double getArc(double jd, CalcType type) 
+{ 
     char serr[AS_MAXCH];
     int iflag = SEFLG_SWIEPH | SEFLG_SIDEREAL;
 
     double x2[6];
     swe_calc_ut(jd, SE_SUN, iflag, x2, serr);
-
     double lonSun = x2[0];
 
     swe_calc_ut(jd, SE_MOON, iflag, x2, serr);
@@ -108,7 +101,7 @@ double getArc(double jd, CalcType type) {
             break;
         default:
             return -535.0;
-    };
+    }
 
     while(result < 0) result += 360;
     while(result >= 360) result -= 360;
@@ -146,7 +139,7 @@ double getBoundry(double jd, CalcType type, double index)
 
         default:
             return -500.0;
-    };
+    }
 
     double result = getArc(jd, type);
     for(int i = 0; i < 20; ++i)
@@ -169,35 +162,47 @@ double getBoundry(double jd, CalcType type, double index)
 Panchanga returnPanchanga(Date date)
 { 
     swe_set_sid_mode(SE_SIDM_LAHIRI, 0, 0);
-    Panchanga current = {};
+    Panchanga current = {0};
 
     current.adDate = date; 
     current.bsDate = adToBs(date); 
 
     char serr[AS_MAXCH];
+    int iflag = SEFLG_SWIEPH | SEFLG_SIDEREAL;
 
-    double totalJulianDay = swe_julday(date.year, date.month, date.day, 0, SE_GREG_CAL);
+    double jdUt = swe_julday(date.year, date.month, date.day, 0, SE_GREG_CAL);
 
     int rsmi = SE_CALC_RISE | SE_BIT_HINDU_RISING;
+    
+    // Get sunrise
+    int returnCode = swe_rise_trans(jdUt, SE_SUN, NULL, SEFLG_SWIEPH, rsmi, geoPos, 0, 0, &current.sunrise, serr);
 
-    // get sunrise
-    int returnCode = swe_rise_trans(totalJulianDay, SE_SUN, NULL, SEFLG_SWIEPH, rsmi, geoPos, 0, 0, &current.sunrise, serr);
-
+    // Get next sunrise (needed for calculating things that span to next day)
     double nextSunrise = 0;
     swe_rise_trans(current.sunrise + 0.5, SE_SUN, NULL, SEFLG_SWIEPH, rsmi, geoPos, 0, 0, &nextSunrise, serr);
 
+    // Get sunset
     rsmi = SE_CALC_SET | SE_BIT_HINDU_RISING;
-    returnCode = swe_rise_trans(totalJulianDay, SE_SUN, NULL, SEFLG_SWIEPH, rsmi, geoPos, 0, 0, &current.sunset, serr); 
+    returnCode = swe_rise_trans(jdUt, SE_SUN, NULL, SEFLG_SWIEPH, rsmi, geoPos, 0, 0, &current.sunset, serr); 
 
     if(returnCode == ERR)
     { 
         printf("%s\n", serr);
     }
 
+    // Calculate vara (day of week)
     current.vara = (int)(current.sunrise + 1.5) % 7;
+    
+    // Calculate ayanamsa
     current.ayanamsa = swe_get_ayanamsa_ut(current.sunrise);
 
-    CalcType types[] = { CALC_TITHI, CALC_NAKSHATRA, CALC_YOGA, };
+    // Calculate Sun's rashi (zodiac sign)
+    double x3[6];
+    swe_calc_ut(current.sunrise, SE_SUN, iflag, x3, serr);
+    current.sunRashi = (int)(x3[0] / 30.0);
+
+    // Calculate Tithi, Nakshatra, and Yoga
+    CalcType types[] = { CALC_TITHI, CALC_NAKSHATRA, CALC_YOGA };
     int maxIndices[] = { 30, 27, 27 };
 
     for(int i = 0; i < 3; ++i)
@@ -226,25 +231,27 @@ Panchanga returnPanchanga(Date date)
             current.yoga[0].end = end;
         }
 
+        // Check if second element occurs before next sunrise
         if(end < nextSunrise)
         { 
             int newIndex = ((int)valueAtSunrise + 1) % maxIndices[i];
             double end2 = getBoundry(end + 0.05, types[i], (double)newIndex + 1.1);
+            
             if(types[i] == CALC_TITHI)
             { 
-                current.tithi[1].tithi = (int)newIndex;
+                current.tithi[1].tithi = newIndex;
                 current.tithi[1].start = end;
                 current.tithi[1].end = end2;
             }
             else if(types[i] == CALC_NAKSHATRA)
             { 
-                current.nakshatra[1].nakshatra = (int)newIndex;
+                current.nakshatra[1].nakshatra = newIndex;
                 current.nakshatra[1].start = end;
                 current.nakshatra[1].end = end2;
             }
             else 
             { 
-                current.yoga[1].yoga = (int)newIndex; 
+                current.yoga[1].yoga = newIndex; 
                 current.yoga[1].start = end;
                 current.yoga[1].end = end2;
             }
@@ -269,7 +276,7 @@ Panchanga returnPanchanga(Date date)
     { 
         if(current.karana[j - 1].end < nextSunrise)
         { 
-            int nextK = (int)(current.karana[j-1].karana + 1) % 60;
+            int nextK = (current.karana[j-1].karana + 1) % 60;
             current.karana[j].karana = nextK;
             current.karana[j].start = current.karana[j-1].end;
             current.karana[j].end = getBoundry(current.karana[j].start + 0.02, CALC_KARANA, (double)nextK + 1);
@@ -289,27 +296,38 @@ Panchanga returnPanchanga(Date date)
         current.muhurata[i].start = current.sunrise + (i * muhurataLength);
         current.muhurata[i].end = current.sunrise + ((i + 1) * muhurataLength);
     }
-    iflag = SEFLG_SWIEPH | SEFLG_SIDEREAL;
 
-    double x3[6];
-    swe_calc_ut(current.sunrise, SE_SUN, iflag, x3, serr);
-
-    current.sunRashi = (int)(x3[0] % 30.0);
-
-    int tithiAtSunRise = current.tithi[0].tithi;
-    double jdNewMoon = current.sunrise - (tithiAtSunRise * 0.984);
-
+    double tithiNow = getArc(current.sunrise, CALC_TITHI);
+    
+    double jdNM1 = current.sunrise - (tithiNow * 0.984);
     for(int i = 0; i < 10; ++i)
     { 
-        double diff = getArc(jdNewMoon, CALC_TITHI);
+        double diff = getArc(jdNM1, CALC_TITHI);
         if(diff > 15) diff -= 30;
-        jdNewMoon -= (diff * 0.984);
+        jdNM1 -= (diff * 0.984);
     }
 
-    swe_calc_ut(jdNewMoon, SE_SUN, SEFLG_SWIEPH | SEFLG_SIDEREAL, x3, serr);
-    int rashiAtNewMoon = (int)(x3[0] / 30.0);
+    double jdNM2 = jdNM1 + 29.53;
+    for(int i = 0; i < 10; ++i)
+    { 
+        double diff = getArc(jdNM2, CALC_TITHI);
+        if(diff > 15) diff -= 30;
+        jdNM2 -= (diff * 0.984);
+    }
 
-    current.lunarMonth = (rashiAtNewMoon + 1) % 12;
+    double xStart[6], xEnd[6];
+    swe_calc_ut(jdNM1 + 0.001, SE_SUN, iflag, xStart, serr);
+    swe_calc_ut(jdNM2 + 0.001, SE_SUN, iflag, xEnd, serr);
+
+    int rashiStart = (int)(xStart[0] / 30.0);
+    int rashiEnd = (int)(xEnd[0] / 30.0);
+
+    int monthBase = (rashiStart + 1) % 12;
+    
+    if(rashiStart == rashiEnd)
+        current.lunarMonth = monthBase + 100; 
+    else
+        current.lunarMonth = monthBase;
 
     return current;
 }

@@ -1,5 +1,0 @@
-#include "panchanga.h"
-
-int main() { 
-    return 0; 
-}
